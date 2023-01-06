@@ -190,7 +190,7 @@ func (r *Rule) doEvaluate(tx *Transaction, cache map[transformationKey]*transfor
 	// SecMark and SecAction uses nil operator
 	if r.operator == nil {
 		tx.WAF.Logger.Debug("[%s] [%d] Forcing rule %d to match", tx.id, rid, r.ID_)
-		md := &corazarules.MatchData{}
+		md := corazarules.MatchData{}
 		matchedValues = append(matchedValues, md)
 		r.matchVariable(tx, md)
 	} else {
@@ -218,7 +218,7 @@ func (r *Rule) doEvaluate(tx *Transaction, cache map[transformationKey]*transfor
 				for _, carg := range args {
 					match := r.executeOperator(carg, tx)
 					if match {
-						mr := &corazarules.MatchData{
+						mr := corazarules.MatchData{
 							VariableName_: v.Variable.Name(),
 							Variable_:     arg.Variable(),
 							Key_:          arg.Key(),
@@ -330,7 +330,7 @@ func (r *Rule) transformArg(arg types.MatchData, argIdx int, cache map[transform
 	}
 }
 
-func (r *Rule) matchVariable(tx *Transaction, m *corazarules.MatchData) {
+func (r *Rule) matchVariable(tx *Transaction, m corazarules.MatchData) {
 	rid := r.ID_
 	if rid == 0 {
 		rid = r.ParentID_
