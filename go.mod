@@ -21,11 +21,13 @@ require (
 	github.com/magefile/mage v1.14.0
 	github.com/petar-dambovaliev/aho-corasick v0.0.0-20211021192214-5ab2d9280aa9
 	github.com/tidwall/gjson v1.14.3
+	github.com/wasilibs/go-re2 v0.1.0
 	golang.org/x/net v0.0.0-20221002022538-bcab6841153b
 )
 
 require (
 	github.com/miekg/dns v1.1.50 // indirect
+	github.com/tetratelabs/wazero v1.0.0-pre.5 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4 // indirect

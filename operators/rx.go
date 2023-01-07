@@ -1,12 +1,12 @@
 // Copyright 2022 Juan Pablo Tosso and the OWASP Coraza contributors
 // SPDX-License-Identifier: Apache-2.0
 
-//go:build !coraza.disabled_operators.rx
+//go:build re2_cgo && !coraza.disabled_operators.rx
 
 package operators
 
 import (
-	"regexp"
+	regexp "github.com/wasilibs/go-re2"
 
 	"github.com/corazawaf/coraza/v3/rules"
 )
