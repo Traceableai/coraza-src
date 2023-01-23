@@ -345,10 +345,14 @@ func (tx *Transaction) AddRequestHeader(key string, value string) {
 
 	if keyl == "content-type" {
 		val := strings.ToLower(value)
-		if val == "application/x-www-form-urlencoded" {
+		if strings.Contains(val, "x-www-form-urlencoded") {
 			tx.variables.reqbodyProcessor.Set("URLENCODED")
-		} else if strings.HasPrefix(val, "multipart/form-data") {
+		} else if strings.Contains(val, "multipart/form-data") {
 			tx.variables.reqbodyProcessor.Set("MULTIPART")
+		} else if strings.Contains(val, "json") {
+			tx.variables.reqbodyProcessor.Set("JSON")
+		} else if strings.Contains(val, "xml") {
+			tx.variables.reqbodyProcessor.Set("XML")
 		}
 	} else if keyl == "cookie" {
 		// Cookies use the same syntax as GET params but with semicolon (;) separator
