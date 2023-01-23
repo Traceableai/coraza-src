@@ -1046,7 +1046,7 @@ func (tx *Transaction) ProcessResponseBody() (*types.Interruption, error) {
 		return tx.interruption, nil
 	}
 
-	if !tx.ResponseBodyAccess || !tx.IsResponseBodyProcessable() {
+	if !tx.ResponseBodyAccess {
 		tx.WAF.Logger.Debug("[%s] Skipping response body processing (Access: %t)", tx.id, tx.ResponseBodyAccess)
 		tx.WAF.Rules.Eval(types.PhaseResponseBody, tx)
 		return tx.interruption, nil
