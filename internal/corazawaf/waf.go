@@ -153,7 +153,7 @@ func (w *WAF) newTransactionWithID(id string) *Transaction {
 	tx.SkipAfter = ""
 	tx.AuditEngine = w.AuditEngine
 	tx.AuditLogParts = w.AuditLogParts
-	tx.ForceRequestBodyVariable = false
+	tx.ForceRequestBodyVariable = true
 	tx.RequestBodyAccess = w.RequestBodyAccess
 	tx.RequestBodyLimit = w.RequestBodyLimit
 	tx.ResponseBodyAccess = w.ResponseBodyAccess
