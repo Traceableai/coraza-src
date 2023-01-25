@@ -222,10 +222,10 @@ func (r *Rule) doEvaluate(phase types.RulePhase, tx *Transaction, cache map[tran
 			// tx.WAF.Logger.Debug("[%s] [%d] Expanding %d arguments for rule %d", tx.id, rid, len(values), r.ID_)
 			for i, arg := range values {
 				// tx.WAF.Logger.Debug("[%s] [%d] Transforming argument %q for rule %d", tx.id, rid, arg.Value(), r.ID_)
-				args, errs := r.transformArg(arg, i, cache)
-				if len(errs) > 0 {
-					// tx.WAF.Logger.Debug("[%s] [%d] Error transforming argument %q for rule %d: %v", tx.id, rid, arg.Value(), r.ID_, errs)
-				}
+				args, _ := r.transformArg(arg, i, cache)
+				// if len(errs) > 0 {
+				// tx.WAF.Logger.Debug("[%s] [%d] Error transforming argument %q for rule %d: %v", tx.id, rid, arg.Value(), r.ID_, errs)
+				// }
 				// tx.WAF.Logger.Debug("[%s] [%d] Arguments transformed for rule %d: %v", tx.id, rid, r.ID_, args)
 
 				// args represents the transformed variables
@@ -256,15 +256,16 @@ func (r *Rule) doEvaluate(phase types.RulePhase, tx *Transaction, cache map[tran
 						// 	r.operator.Data,
 						// 	carg,
 						// )
-					} else {
-						// tx.WAF.Logger.Debug("[%s] [%d] Evaluating operator \"%s %s\" against %q: NO MATCH",
-						// 	tx.id,
-						// 	rid,
-						// 	r.operator.Function,
-						// 	r.operator.Data,
-						// 	carg,
-						// )
 					}
+					// else {
+					// tx.WAF.Logger.Debug("[%s] [%d] Evaluating operator \"%s %s\" against %q: NO MATCH",
+					// 	tx.id,
+					// 	rid,
+					// 	r.operator.Function,
+					// 	r.operator.Data,
+					// 	carg,
+					// )
+					// }
 				}
 			}
 		}
@@ -345,13 +346,13 @@ func (r *Rule) transformArg(arg types.MatchData, argIdx int, cache map[transform
 }
 
 func (r *Rule) matchVariable(tx *Transaction, m corazarules.MatchData) {
-	rid := r.ID_
-	if rid == 0 {
-		rid = r.ParentID_
-	}
-	if !m.IsNil() {
-		// tx.WAF.Logger.Debug("[%s] [%d] Matching rule %d %s:%s", tx.id, rid, r.ID_, m.VariableName(), m.Key())
-	}
+	// rid := r.ID_
+	// if rid == 0 {
+	// 	rid = r.ParentID_
+	// }
+	// if !m.IsNil() {
+	// tx.WAF.Logger.Debug("[%s] [%d] Matching rule %d %s:%s", tx.id, rid, r.ID_, m.VariableName(), m.Key())
+	// }
 	// we must match the vars before running the chains
 
 	// We run non-disruptive actions even if there is no chain match

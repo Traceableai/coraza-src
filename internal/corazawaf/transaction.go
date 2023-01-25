@@ -345,13 +345,14 @@ func (tx *Transaction) AddRequestHeader(key string, value string) {
 
 	if keyl == "content-type" {
 		val := strings.ToLower(value)
-		if strings.Contains(val, "x-www-form-urlencoded") {
+		switch {
+		case strings.Contains(val, "x-www-form-urlencoded"):
 			tx.variables.reqbodyProcessor.Set("URLENCODED")
-		} else if strings.Contains(val, "multipart/form-data") {
+		case strings.Contains(val, "multipart/form-data"):
 			tx.variables.reqbodyProcessor.Set("MULTIPART")
-		} else if strings.Contains(val, "json") {
+		case strings.Contains(val, "json"):
 			tx.variables.reqbodyProcessor.Set("JSON")
-		} else if strings.Contains(val, "xml") {
+		case strings.Contains(val, "xml"):
 			tx.variables.reqbodyProcessor.Set("XML")
 		}
 	} else if keyl == "cookie" {

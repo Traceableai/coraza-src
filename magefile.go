@@ -48,7 +48,7 @@ func Format() error {
 
 // Lint verifies code quality.
 func Lint() error {
-	if err := sh.RunV("go", "run", fmt.Sprintf("github.com/golangci/golangci-lint/cmd/golangci-lint@%s", golangCILintVer), "run"); err != nil {
+	if err := sh.RunV("go", "run", "-tags=re2_cgo", fmt.Sprintf("github.com/golangci/golangci-lint/cmd/golangci-lint@%s", golangCILintVer), "run"); err != nil {
 		return err
 	}
 
@@ -65,17 +65,17 @@ func Lint() error {
 
 // Test runs all tests.
 func Test() error {
-	if err := sh.RunV("go", "test", "./..."); err != nil {
+	if err := sh.RunV("go", "test", "-tags=re2_cgo", "./..."); err != nil {
 		return err
 	}
-	if err := sh.RunV("go", "test", "./examples/http-server"); err != nil {
+	if err := sh.RunV("go", "test", "-tags=re2_cgo", "./examples/http-server"); err != nil {
 		return err
 	}
-	if err := sh.RunV("go", "test", "./testing/coreruleset"); err != nil {
+	if err := sh.RunV("go", "test", "-tags=re2_cgo", "./testing/coreruleset"); err != nil {
 		return err
 	}
 	// Execute FTW tests with multiphase evaluation enabled as well
-	if err := sh.RunV("go", "test", "-tags=coraza.rule.multiphase_evaluation", "./testing/coreruleset"); err != nil {
+	if err := sh.RunV("go", "test", "-tags=coraza.rule.multiphase_evaluation,re2_cgo", "./testing/coreruleset"); err != nil {
 		return err
 	}
 
