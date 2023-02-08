@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/corazawaf/coraza/v3/collection"
+	"github.com/corazawaf/coraza/v3/internal/collections"
 	"github.com/corazawaf/coraza/v3/internal/corazarules"
 	utils "github.com/corazawaf/coraza/v3/internal/strings"
 	"github.com/corazawaf/coraza/v3/loggers"
@@ -161,24 +162,24 @@ func TestWriteRequestBody(t *testing.T) {
 	testCases := []struct {
 		name                   string
 		requestBodyLimit       int
-		requestBodyLimitAction types.RequestBodyLimitAction
+		requestBodyLimitAction types.BodyLimitAction
 		shouldInterrupt        bool
 	}{
 		{
 			name:                   "LimitNotReached",
 			requestBodyLimit:       urlencodedBodyLen + 2,
-			requestBodyLimitAction: types.RequestBodyLimitAction(-1),
+			requestBodyLimitAction: types.BodyLimitAction(-1),
 		},
 		{
 			name:                   "LimitReachedAndRejects",
 			requestBodyLimit:       urlencodedBodyLen - 3,
-			requestBodyLimitAction: types.RequestBodyLimitActionReject,
+			requestBodyLimitAction: types.BodyLimitActionReject,
 			shouldInterrupt:        true,
 		},
 		{
 			name:                   "LimitReachedAndPartialProcessing",
 			requestBodyLimit:       urlencodedBodyLen - 3,
-			requestBodyLimitAction: types.RequestBodyLimitActionProcessPartial,
+			requestBodyLimitAction: types.BodyLimitActionProcessPartial,
 		},
 	}
 
@@ -250,17 +251,17 @@ func TestWriteRequestBody(t *testing.T) {
 
 func TestWriteRequestBodyOnLimitReached(t *testing.T) {
 	testCases := map[string]struct {
-		requestBodyLimitAction  types.RequestBodyLimitAction
+		requestBodyLimitAction  types.BodyLimitAction
 		preexistingInterruption *types.Interruption
 	}{
 		"reject": {
-			requestBodyLimitAction: types.RequestBodyLimitActionReject,
+			requestBodyLimitAction: types.BodyLimitActionReject,
 			preexistingInterruption: &types.Interruption{
 				RuleID: 123,
 			},
 		},
 		"partial processing": {
-			requestBodyLimitAction: types.RequestBodyLimitActionProcessPartial,
+			requestBodyLimitAction: types.BodyLimitActionProcessPartial,
 		},
 	}
 
@@ -352,7 +353,7 @@ func TestWriteRequestBodyIsNopWhenBodyIsNotAccesible(t *testing.T) {
 func TestResponseHeader(t *testing.T) {
 	tx := makeTransaction(t)
 	tx.AddResponseHeader("content-type", "test")
-	if tx.variables.responseContentType.String() != "test" {
+	if tx.variables.responseContentType.Get() != "test" {
 		t.Error("invalid RESPONSE_CONTENT_TYPE after response headers")
 	}
 
@@ -429,22 +430,217 @@ func TestAuditLog(t *testing.T) {
 	}
 }
 
-func TestResponseBody(t *testing.T) {
-	tx := makeTransaction(t)
-	tx.ResponseBodyAccess = true
-	tx.RuleEngine = types.RuleEngineOn
-	tx.AddResponseHeader("content-type", "text/plain")
-	if _, err := tx.ResponseBodyBuffer.Write([]byte("test123")); err != nil {
-		t.Error("Failed to write response body buffer")
+var responseBodyWriters = map[string]func(tx *Transaction, body string) (*types.Interruption, int, error){
+	"WriteResponsequestBody": func(tx *Transaction, body string) (*types.Interruption, int, error) {
+		return tx.WriteResponseBody([]byte(body))
+	},
+	"ReadResponseBodyFromKnownLen": func(tx *Transaction, body string) (*types.Interruption, int, error) {
+		return tx.ReadResponseBodyFrom(strings.NewReader(body))
+	},
+	"ReadResponseBodyFromUnknownLen": func(tx *Transaction, body string) (*types.Interruption, int, error) {
+		return tx.ReadResponseBodyFrom(struct{ io.Reader }{
+			strings.NewReader(body),
+		})
+	},
+}
+
+func TestWriteResponseBody(t *testing.T) {
+	const (
+		urlencodedBody    = "some=result&second=data"
+		urlencodedBodyLen = len(urlencodedBody)
+	)
+
+	testCases := []struct {
+		name                    string
+		responseBodyLimit       int
+		responseBodyLimitAction types.BodyLimitAction
+		shouldInterrupt         bool
+	}{
+		{
+			name:                    "LimitNotReached",
+			responseBodyLimit:       urlencodedBodyLen + 2,
+			responseBodyLimitAction: types.BodyLimitAction(-1),
+		},
+		{
+			name:                    "LimitReachedAndRejects",
+			responseBodyLimit:       urlencodedBodyLen - 3,
+			responseBodyLimitAction: types.BodyLimitActionReject,
+			shouldInterrupt:         true,
+		},
+		{
+			name:                    "LimitReachedAndPartialProcessing",
+			responseBodyLimit:       urlencodedBodyLen - 3,
+			responseBodyLimitAction: types.BodyLimitActionProcessPartial,
+		},
 	}
-	if _, err := tx.ProcessResponseBody(); err != nil {
-		t.Error("Failed to process response body")
+
+	urlencodedBodyLenThird := urlencodedBodyLen / 3
+	bodyChunks := map[string][]string{
+		"BodyInOneShot":     {urlencodedBody},
+		"BodyInThreeChunks": {urlencodedBody[0:urlencodedBodyLenThird], urlencodedBody[urlencodedBodyLenThird : 2*urlencodedBodyLenThird], urlencodedBody[2*urlencodedBodyLenThird:]},
 	}
-	if tx.variables.responseBody.String() != "test123" {
-		t.Error("failed to set response body")
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			for name, writeResponseBody := range responseBodyWriters {
+				t.Run(name, func(t *testing.T) {
+					for name, chunks := range bodyChunks {
+						t.Run(name, func(t *testing.T) {
+							waf := NewWAF()
+							waf.RuleEngine = types.RuleEngineOn
+							waf.ResponseBodyMimeTypes = []string{"text/plain"}
+							waf.ResponseBodyAccess = true
+							waf.ResponseBodyLimit = int64(testCase.responseBodyLimit)
+							waf.ResponseBodyLimitAction = testCase.responseBodyLimitAction
+
+							if err := waf.Validate(); err != nil {
+								t.Fatalf("failed to validate the WAF: %s", err.Error())
+							}
+
+							tx := waf.NewTransaction()
+							tx.AddResponseHeader("content-type", "text/plain")
+
+							it := tx.ProcessResponseHeaders(200, "HTTP/1")
+							if it != nil {
+								t.Fatal("Unexpected interruption on headers")
+							}
+
+							var err error
+
+							for _, c := range chunks {
+								if it, _, err = writeResponseBody(tx, c); err != nil {
+									t.Errorf("Failed to write body buffer: %s", err.Error())
+								}
+							}
+
+							if testCase.shouldInterrupt {
+								if it == nil {
+									t.Fatal("Expected interruption, got nil")
+								}
+							} else {
+								it, err := tx.ProcessResponseBody()
+								if err != nil {
+									t.Fatal(err)
+								}
+
+								if it != nil {
+									t.Fatalf("Unexpected interruption")
+								}
+								// checking if the body has been populated up to the first POST arg
+								index := strings.Index(urlencodedBody, "&")
+								if tx.variables.responseBody.Get()[:index] != urlencodedBody[:index] {
+									t.Error("failed to set response body")
+								}
+							}
+
+							_ = tx.Close()
+						})
+					}
+
+				})
+			}
+
+		})
 	}
-	if err := tx.Close(); err != nil {
-		t.Error(err)
+}
+
+func TestWriteResponseBodyOnLimitReached(t *testing.T) {
+	testCases := map[string]struct {
+		responseBodyLimitAction types.BodyLimitAction
+		preexistingInterruption *types.Interruption
+	}{
+		"reject": {
+			responseBodyLimitAction: types.BodyLimitActionReject,
+			preexistingInterruption: &types.Interruption{
+				RuleID: 123,
+			},
+		},
+		"partial processing": {
+			responseBodyLimitAction: types.BodyLimitActionProcessPartial,
+		},
+	}
+
+	for tName, tCase := range testCases {
+		waf := NewWAF()
+		waf.RuleEngine = types.RuleEngineOn
+		waf.ResponseBodyAccess = true
+		waf.ResponseBodyLimit = 2
+		waf.ResponseBodyLimitAction = tCase.responseBodyLimitAction
+
+		t.Run(tName, func(t *testing.T) {
+			for wName, writer := range responseBodyWriters {
+				t.Run(wName, func(t *testing.T) {
+					tx := waf.NewTransaction()
+					_, err := tx.responseBodyBuffer.Write([]byte("ab"))
+					if err != nil {
+						t.Fatalf("unexpected error when writing to body buffer directly: %s", err.Error())
+					}
+					tx.interruption = tCase.preexistingInterruption
+
+					it, n, err := writer(tx, "c")
+					if err != nil {
+						t.Fatalf("unexpected error: %s", err.Error())
+					}
+
+					if it != tCase.preexistingInterruption {
+						t.Fatalf("unexpected interruption")
+					}
+
+					if n != 0 {
+						t.Fatalf("unexpected number of bytes written")
+					}
+
+					_ = tx.Close()
+				})
+			}
+		})
+	}
+}
+
+func TestWriteResponseBodyIsNopWhenBodyIsNotAccesible(t *testing.T) {
+	testCases := []struct {
+		ruleEngine         types.RuleEngineStatus
+		responseBodyAccess bool
+	}{
+		{
+			ruleEngine: types.RuleEngineOff,
+		},
+		{
+			ruleEngine:         types.RuleEngineOn,
+			responseBodyAccess: false,
+		},
+	}
+
+	for _, tCase := range testCases {
+		t.Run(fmt.Sprintf(
+			"ruleEngine = %s and responseBodyAccess = %t",
+			tCase.ruleEngine.String(),
+			tCase.responseBodyAccess,
+		), func(t *testing.T) {
+			waf := NewWAF()
+			waf.RuleEngine = tCase.ruleEngine
+			waf.ResponseBodyAccess = tCase.responseBodyAccess
+
+			for wName, writer := range responseBodyWriters {
+				t.Run(wName, func(t *testing.T) {
+					tx := waf.NewTransaction()
+					it, n, err := writer(tx, "abc")
+					if err != nil {
+						t.Fatalf("unexpected error: %s", err.Error())
+					}
+
+					if it != nil {
+						t.Fatalf("unexpected interruption")
+					}
+
+					if n != 0 {
+						t.Fatalf("unexpected number of bytes written")
+					}
+
+					_ = tx.Close()
+				})
+			}
+		})
 	}
 }
 
@@ -542,15 +738,24 @@ func TestHeaderSetters(t *testing.T) {
 	if tx.variables.requestHeaders.Get("cookie")[0] != "abc=def;hij=klm" {
 		t.Error("failed to set request header")
 	}
-	if !utils.InSlice("cookie", tx.variables.requestHeadersNames.Get("cookie")) {
-		t.Error("failed to set header name", tx.variables.requestHeadersNames.Get("cookie"))
+	if !utils.InSlice("cookie", collectionValues(t, tx.variables.requestHeadersNames)) {
+		t.Error("failed to set header name", collectionValues(t, tx.variables.requestHeadersNames))
 	}
-	if !utils.InSlice("abc", tx.variables.requestCookiesNames.Get("abc")) {
+	if !utils.InSlice("abc", collectionValues(t, tx.variables.requestCookiesNames)) {
 		t.Error("failed to set cookie name")
 	}
 	if err := tx.Close(); err != nil {
 		t.Error(err)
 	}
+}
+
+func collectionValues(t *testing.T, col collection.Collection) []string {
+	t.Helper()
+	var values []string
+	for _, v := range col.FindAll() {
+		values = append(values, v.Value())
+	}
+	return values
 }
 
 func TestRequestBodyProcessingAlgorithm(t *testing.T) {
@@ -567,7 +772,7 @@ func TestRequestBodyProcessingAlgorithm(t *testing.T) {
 	if _, err := tx.ProcessRequestBody(); err != nil {
 		t.Error("failed to process request body")
 	}
-	if tx.variables.requestBody.String() != "test123" {
+	if tx.variables.requestBody.Get() != "test123" {
 		t.Error("failed to set request body")
 	}
 	if err := tx.Close(); err != nil {
@@ -668,20 +873,22 @@ func TestTransactionSyncPool(t *testing.T) {
 
 func TestTxPhase4Magic(t *testing.T) {
 	waf := NewWAF()
+	waf.ResponseBodyAccess = true
+	waf.ResponseBodyLimit = 3
+	waf.ResponseBodyLimitAction = types.BodyLimitActionProcessPartial
+	waf.ResponseBodyMimeTypes = []string{"text/html"}
 	tx := waf.NewTransaction()
 	tx.AddResponseHeader("content-type", "text/html")
-	tx.ResponseBodyAccess = true
-	tx.WAF.ResponseBodyLimit = 3
-	if _, err := tx.ResponseBodyBuffer.Write([]byte("more bytes")); err != nil {
+	if it, _, err := tx.WriteResponseBody([]byte("more bytes")); it != nil || err != nil {
 		t.Error(err)
 	}
 	if _, err := tx.ProcessResponseBody(); err != nil {
 		t.Error(err)
 	}
-	if tx.variables.outboundDataError.String() != "1" {
+	if tx.variables.outboundDataError.Get() != "1" {
 		t.Error("failed to set outbound data error")
 	}
-	if tx.variables.responseBody.String() != "mor" {
+	if tx.variables.responseBody.Get() != "mor" {
 		t.Error("failed to set response body")
 	}
 }
@@ -689,7 +896,7 @@ func TestTxPhase4Magic(t *testing.T) {
 func TestVariablesMatch(t *testing.T) {
 	waf := NewWAF()
 	tx := waf.NewTransaction()
-	tx.matchVariable(corazarules.MatchData{
+	tx.matchVariable(&corazarules.MatchData{
 		VariableName_: "ARGS_NAMES",
 		Variable_:     variables.ArgsNames,
 		Key_:          "sample",
@@ -701,7 +908,7 @@ func TestVariablesMatch(t *testing.T) {
 	}
 
 	for k, v := range expect {
-		if m := (tx.Collection(k)).(*collection.Simple).String(); m != v {
+		if m := (tx.Collection(k)).(*collections.Single).Get(); m != v {
 			t.Errorf("failed to match variable %s, Expected: %s, got: %s", k.Name(), v, m)
 		}
 	}
@@ -722,7 +929,7 @@ func TestTxReqBodyForce(t *testing.T) {
 	if _, err := tx.ProcessRequestBody(); err != nil {
 		t.Error(err)
 	}
-	if tx.variables.requestBody.String() != "test" {
+	if tx.variables.requestBody.Get() != "test" {
 		t.Error("failed to set request body")
 	}
 }
@@ -738,7 +945,7 @@ func TestTxReqBodyForceNegative(t *testing.T) {
 	if _, err := tx.ProcessRequestBody(); err != nil {
 		t.Error(err)
 	}
-	if tx.variables.requestBody.String() == "test" {
+	if tx.variables.requestBody.Get() == "test" {
 		t.Error("reqbody should not be there")
 	}
 }
@@ -747,12 +954,34 @@ func TestTxProcessConnection(t *testing.T) {
 	waf := NewWAF()
 	tx := waf.NewTransaction()
 	tx.ProcessConnection("127.0.0.1", 80, "127.0.0.2", 8080)
-	if tx.variables.remoteAddr.String() != "127.0.0.1" {
+	if tx.variables.remoteAddr.Get() != "127.0.0.1" {
 		t.Error("failed to set client ip")
 	}
-	if tx.variables.remotePort.Int() != 80 {
+	if rp, _ := strconv.Atoi(tx.variables.remotePort.Get()); rp != 80 {
 		t.Error("failed to set client port")
 	}
+}
+
+func TestTxSetServerName(t *testing.T) {
+
+	l := &inspectableLogger{}
+	waf := NewWAF()
+	waf.Logger.SetOutput(l)
+	waf.Logger.SetLevel(loggers.LogLevelWarn)
+	tx := waf.NewTransaction()
+	tx.LastPhase = types.PhaseRequestHeaders
+	tx.SetServerName("coraza.io")
+	if tx.variables.serverName.Get() != "coraza.io" {
+		t.Error("failed to set server name")
+	}
+	if want, have := 1, len(l.entries); want != have {
+		t.Fatalf("unexpected number of log entries, want %d, have %d", want, have)
+	}
+
+	if want, have := "SetServerName has been called after ProcessRequestHeaders", l.entries[0]; !strings.Contains(have, want) {
+		t.Fatalf("unexpected message, want %q, have %q", want, have)
+	}
+
 }
 
 func TestTxAddArgument(t *testing.T) {
@@ -789,13 +1018,13 @@ func TestTxProcessURI(t *testing.T) {
 	tx := waf.NewTransaction()
 	uri := "http://example.com/path/to/file.html?query=string&other=value"
 	tx.ProcessURI(uri, "GET", "HTTP/1.1")
-	if s := tx.variables.requestURI.String(); s != uri {
+	if s := tx.variables.requestURI.Get(); s != uri {
 		t.Errorf("failed to set request uri, got %s", s)
 	}
-	if s := tx.variables.requestBasename.String(); s != "file.html" {
+	if s := tx.variables.requestBasename.Get(); s != "file.html" {
 		t.Errorf("failed to set request path, got %s", s)
 	}
-	if tx.variables.queryString.String() != "query=string&other=value" {
+	if tx.variables.queryString.Get() != "query=string&other=value" {
 		t.Error("failed to set request query")
 	}
 	if v := tx.variables.args.FindAll(); len(v) != 2 {
@@ -883,7 +1112,7 @@ func validateMacroExpansion(tests map[string]string, tx *Transaction, t *testing
 		res := m.Expand(tx)
 		if res != v {
 			if testing.Verbose() {
-				fmt.Println(tx.Debug())
+				fmt.Println(tx)
 				fmt.Println("===STACK===\n", string(debug.Stack())+"\n===STACK===")
 			}
 			t.Error("Failed set transaction for " + k + ", expected " + v + ", got " + res)

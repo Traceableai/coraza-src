@@ -44,9 +44,13 @@ func processRequest(tx types.Transaction, req *http.Request) (*types.Interruptio
 			tx.AddRequestHeader(k, v)
 		}
 	}
-	// Host will always be removed from req.Headers(), so we manually add it
+
+	// Host will always be removed from req.Headers() and promoted to the
+	// Request.Host field, so we manually add it
 	if req.Host != "" {
 		tx.AddRequestHeader("Host", req.Host)
+		// This connector relies on the host header (now host field) to populate ServerName
+		tx.SetServerName(req.Host)
 	}
 
 	in = tx.ProcessRequestHeaders()
@@ -73,6 +77,8 @@ func processRequest(tx types.Transaction, req *http.Request) (*types.Interruptio
 				return nil, fmt.Errorf("failed to get the request body: %s", err.Error())
 			}
 
+			// Adds all remaining bytes beyond the coraza limit to its buffer
+			// It happens when the partial body has been processed and it did not trigger an interruption
 			body := io.MultiReader(rbr, req.Body)
 			// req.Body is transparently reinizialied with a new io.ReadCloser.
 			// The http handler will be able to read it.
@@ -101,6 +107,11 @@ func processRequest(tx types.Transaction, req *http.Request) (*types.Interruptio
 }
 
 func WrapHandler(waf coraza.WAF, l Logger, h http.Handler) http.Handler {
+	if waf == nil {
+		l("nil WAF passed to the handler wrapper")
+		return h
+	}
+
 	fn := func(w http.ResponseWriter, r *http.Request) {
 		tx := waf.NewTransaction()
 		defer func() {

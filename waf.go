@@ -4,7 +4,6 @@
 package coraza
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/corazawaf/coraza/v3/internal/corazawaf"
@@ -73,33 +72,32 @@ func NewWAF(config WAFConfig) (WAF, error) {
 		}
 	}
 
-	if c.contentInjection {
-		waf.ContentInjection = true
-	}
-
-	if r := c.requestBody; r != nil {
-		if r.limit <= 0 {
-			return nil, errors.New("request body limit should be bigger than 0")
-		}
-
-		if r.limit < r.inMemoryLimit {
-			return nil, errors.New("request body limit should be at least the memory limit")
-		}
+	if c.requestBodyAccess {
 		waf.RequestBodyAccess = true
-		waf.RequestBodyLimit = int64(r.limit)
-		waf.RequestBodyInMemoryLimit = int64(r.inMemoryLimit)
 	}
 
-	if r := c.responseBody; r != nil {
-		if r.limit <= 0 {
-			return nil, errors.New("response body limit should be bigger than 0")
-		}
+	if c.requestBodyLimit != corazawaf.UnsetLimit {
+		waf.RequestBodyLimit = int64(c.requestBodyLimit)
+	}
+
+	if c.requestBodyInMemoryLimit != corazawaf.UnsetLimit {
+		waf.RequestBodyInMemoryLimit = int64(c.requestBodyInMemoryLimit)
+	}
+
+	if c.responseBodyAccess {
 		waf.ResponseBodyAccess = true
-		waf.ResponseBodyLimit = int64(r.limit)
+	}
+
+	if c.responseBodyLimit != corazawaf.UnsetLimit {
+		waf.ResponseBodyLimit = int64(c.responseBodyLimit)
 	}
 
 	if c.errorCallback != nil {
 		waf.ErrorLogCb = c.errorCallback
+	}
+
+	if err := waf.Validate(); err != nil {
+		return nil, err
 	}
 
 	return wafWrapper{waf: waf}, nil
