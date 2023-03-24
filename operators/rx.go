@@ -7,9 +7,10 @@ package operators
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"unicode/utf8"
+
+	regexp "github.com/wasilibs/go-re2"
 
 	"rsc.io/binaryregexp"
 

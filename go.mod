@@ -22,12 +22,14 @@ require (
 	github.com/magefile/mage v1.14.0
 	github.com/petar-dambovaliev/aho-corasick v0.0.0-20211021192214-5ab2d9280aa9
 	github.com/tidwall/gjson v1.14.4
+	github.com/wasilibs/go-re2 v0.2.1
 	golang.org/x/net v0.8.0
 	rsc.io/binaryregexp v0.2.0
 )
 
 require (
 	github.com/miekg/dns v1.1.50 // indirect
+	github.com/tetratelabs/wazero v1.0.0-rc.2 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	golang.org/x/mod v0.8.0 // indirect
