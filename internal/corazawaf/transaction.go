@@ -114,7 +114,7 @@ type Transaction struct {
 	variables TransactionVariables
 
 	transformationCache  map[transformationKey]*transformationValue
-	blockRegexMatchState map[string]*plugintypes.BlockRegexMatchResult
+	blockRegexMatchState map[int]*plugintypes.BlockRegexMatchResult
 }
 
 func (tx *Transaction) ID() string {
@@ -125,7 +125,7 @@ func (tx *Transaction) Variables() plugintypes.TransactionVariables {
 	return &tx.variables
 }
 
-func (tx *Transaction) BlockRegexMatchState() map[string]*plugintypes.BlockRegexMatchResult {
+func (tx *Transaction) BlockRegexMatchState() map[int]*plugintypes.BlockRegexMatchResult {
 	return tx.blockRegexMatchState
 }
 

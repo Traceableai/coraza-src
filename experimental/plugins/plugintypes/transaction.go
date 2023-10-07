@@ -36,7 +36,7 @@ type TransactionState interface {
 
 	LastPhase() types.RulePhase
 
-	BlockRegexMatchState() map[string]*BlockRegexMatchResult
+	BlockRegexMatchState() map[int]*BlockRegexMatchResult
 }
 
 type BlockRegexMatchResult struct {
