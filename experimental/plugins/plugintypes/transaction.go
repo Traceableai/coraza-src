@@ -35,6 +35,13 @@ type TransactionState interface {
 	CaptureField(idx int, value string)
 
 	LastPhase() types.RulePhase
+
+	BlockRegexMatchState() map[string]*BlockRegexMatchResult
+}
+
+type BlockRegexMatchResult struct {
+	Match    bool
+	Captures []string
 }
 
 // TransactionVariables has pointers to all the variables of the transaction
